@@ -265,4 +265,4 @@ That's all.
 
 Regards from Ahosan.
 
-Medium: 
+Medium: https://medium.com/@ahosanhabib.974/mongodb-7-0-11-ee-single-instance-architecture-and-deployment-in-redhat-linux-9-9500eb250153
