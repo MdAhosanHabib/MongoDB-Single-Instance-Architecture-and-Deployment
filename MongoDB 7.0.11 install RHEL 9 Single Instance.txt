@@ -1,0 +1,180 @@
+############################
+## Install MongoDB 7.0.11 ##
+############################
+-- go to this dir
+cd /home/test
+
+
+-- install the dependencies
+dnf install cyrus-sasl -y
+dnf install cyrus-sasl-gssapi -y
+dnf install cyrus-sasl-plain -y
+
+
+-- upload & install the required packages
+rpm -ivh mongodb-database-tools-rhel90-x86_64-100.9.4.rpm
+rpm -ivh mongodb-enterprise-server-7.0.11-1.el9.x86_64.rpm
+rpm -ivh mongodb-mongosh-2.2.6.x86_64.rpm
+
+
+-- create the Configuration file
+vi /etc/mongod.conf
+
+# Where and how to store data.
+storage:
+  dbPath: /test/mongodb7011
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 4  # Half of the system memory
+  directoryPerDB: true  # This option was missed in the original configuration
+  oplogMinRetentionHours: 48 # Minimum retention period for the oplog in hours
+
+# Where to write logging data.
+systemLog:
+  destination: file
+  logAppend: true
+  path: /test/mongodb7011/mongod.log
+
+# Network interfaces
+net:
+  port: 27017
+  bindIp: 0.0.0.0  # Bind to all interfaces
+
+# Process Management
+processManagement:
+  fork: true  # Fork server process
+  pidFilePath: /test/mongodb7011/mongod.pid
+  timeZoneInfo: /usr/share/zoneinfo
+
+# Operation Profiling
+operationProfiling:
+  mode: slowOp
+  slowOpThresholdMs: 100
+
+# Replication
+replication:
+  replSetName: rs0
+  oplogSizeMB: 1024  # 1GB oplog size
+
+
+-- create & permission for data & archive
+mkdir -p /test/mongodb7011
+chown -R mongod:mongod /data/mongodb7011 /etc/mongod.conf
+
+
+-- start mongodb & log
+systemctl start mongod
+systemctl enable mongod
+systemctl status mongod
+
+tail -1000f /test/mongodb7011/mongod.log
+
+
+-- set the oplog
+mongosh
+rs.initiate()
+rs.status()
+use local
+db.oplog.rs.stats()
+
+
+#######################################
+## MongoDB User DB Collection Create ##
+#######################################
+-- create super users & give permission
+mongosh
+Enterprise test> use admin
+Enterprise admin> db.createUser({
+  user: "admin",
+  pwd: passwordPrompt(), // This will prompt you to enter a password securely
+  roles: ["root"]
+})
+
+User: admin
+pass: test
+
+
+-- create database and Collection
+use testdb
+db.createCollection("exampleCollection")
+
+db.exampleCollection.insertMany([
+  {
+    name: "Ahosan",
+    age: 28,
+    email: "ahosan@example.com",
+    address: {
+      street: "456 Oak St",
+      city: "Othertown",
+      state: "TX",
+      zip: "67890"
+    },
+    hobbies: ["cooking", "biking"]
+  },
+  {
+    name: "Habib",
+    age: 27,
+    email: "habib@example.com",
+    address: {
+      street: "789 Pine St",
+      city: "Sometown",
+      state: "NY",
+      zip: "11223"
+    },
+    hobbies: ["gaming", "hiking"]
+  }
+])
+
+Enterprise admin> db.createUser({
+  user: "test",
+  pwd: passwordPrompt(), // This will prompt you to enter a password securely
+  roles: [{ role: "readWrite", db: "testdb" }] // Replace "testdb" with the name of your database
+})
+
+User: test
+Pass: test
+
+
+-- add in conf of mongod
+openssl rand -base64 756 > /test/mongodb7011/keyfile
+chown -R mongod:mongod /test/mongodb7011/keyfile
+chmod 400 /test/mongodb7011/keyfile
+
+vi /etc/mongod.conf
+# Security settings
+security:
+  authorization: enabled
+  keyFile: /test/mongodb7011/keyfile
+
+systemctl restart mongod
+
+
+-- login by app user
+mongosh -u test -p --authenticationDatabase testdb
+Pass: test
+use testdb
+db.exampleCollection.find({ age: 27 })
+
+
+-- login to super user
+mongosh -u admin -p --authenticationDatabase admin
+Pass: test
+
+
+##############################
+## MongoDB credentials Test ##
+##############################
+-- super user
+IP: 192.0.0.5
+Port: 27017
+User: admin
+Pass: test
+authenticationDatabase: admin
+
+-- app user
+IP: 192.0.0.5
+Port: 27017
+User: test
+Pass: test
+authenticationDatabase: testdb
+
